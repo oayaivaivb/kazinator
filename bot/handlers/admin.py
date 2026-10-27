@@ -58,7 +58,7 @@ async def process_deadline(message: Message, state: FSMContext):
         deadline_dt = datetime.strptime(message.text.strip(), "%d.%m.%Y %H:%M")
         if deadline_dt <= datetime.now():
             return await message.answer("❌ Время должно быть в будущем. Попробуйте еще раз:")
-        await state.update_data(deadline=deadline_dt)
+        await state.update_data(deadline=deadline_dt.isoformat())
         await message.answer("Шаг 3. Введите ссылку на канал для подписки (пример: https://t.me/channel или @channel)\n\n"
                              "Если подписка не нужна, отправьте '-'.")
         await state.set_state(NewRaffle.channel)
@@ -81,10 +81,11 @@ async def process_channel(message: Message, state: FSMContext):
 
     # Формируем сводку
     data = await state.get_data()
+    deadline_dt = datetime.fromisoformat(data['deadline'])
     summary = (
         "📋 <b>Сводка по розыгрышу:</b>\n"
         f"Победителей: {data['winner_slots']}\n"
-        f"Окончание: {data['deadline'].strftime('%d.%m.%Y %H:%M')}\n"
+        f"Окончание: {deadline_dt.strftime('%d.%m.%Y %H:%M')}\n"
         f"Канал: {data['channel'] if data['channel'] else 'Нет'}"
     )
 
@@ -102,10 +103,11 @@ async def process_channel(message: Message, state: FSMContext):
 async def confirm_new_raffle(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     # Записываем в БД
+    deadline_dt = datetime.fromisoformat(data['deadline'])
     async with async_session() as session:
         new_raffle = Raffle(
             winner_slots=data['winner_slots'],
-            deadline_at=data['deadline'],
+            deadline_at=deadline_dt,
             channel_username=data['channel'],
             require_subscribe=data['require_subscribe'],
             is_finished=False,
