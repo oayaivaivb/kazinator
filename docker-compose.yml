@@ -1,0 +1,36 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: raffle_db
+      TZ: Europe/Moscow
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  bot:
+    build: .
+    environment:
+      # Важно: внутри Docker сеть своя, поэтому localhost меняется на имена сервисов (mysql и redis)
+      BOT_TOKEN: ${BOT_TOKEN}
+      DATABASE_URL: mysql+aiomysql://root:password@mysql:3306/raffle_db
+      REDIS_URL: redis://redis:6379/0
+      ADMIN_IDS: ${ADMIN_IDS}
+      TZ: Europe/Moscow
+    depends_on:
+      - mysql
+      - redis
+    restart: unless-stopped
+
+volumes:
+  mysql_data:

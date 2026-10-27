@@ -1,4 +1,6 @@
 venv/
 .env
 __pycache__/
-.mypy_cache
+.mypy_cache/
+.vscode/
+bot_run.log
