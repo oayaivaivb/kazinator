@@ -1,5 +1,7 @@
 """init tables
 
+Первичная схема: raffles, users (уникальный telegram_id), winners.
+
 Revision ID: 239c896e9aad
 Revises: 
 Create Date: 2026-10-27 13:10:12.203355

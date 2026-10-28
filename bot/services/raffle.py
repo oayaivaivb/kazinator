@@ -20,7 +20,7 @@ async def finish_raffle(raffle_id: int, session: AsyncSession, bot: Bot) -> bool
         return False
     raffle.is_finished = True
 
-    # 2. Выбираем валидных участников
+    # 2. Выбираем валидных участников (забаненные в выборку не попадают)
     users_result = await session.execute(
         select(User).where(User.raffle_id == raffle_id, User.is_banned == False)
     )

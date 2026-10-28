@@ -1,3 +1,5 @@
+"""FSM-состояния пользователя (регистрация в розыгрыше)."""
+
 from aiogram.fsm.state import State, StatesGroup
 
 

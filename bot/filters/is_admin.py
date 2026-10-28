@@ -1,3 +1,5 @@
+"""Фильтр роутеров: пропускает апдейты только от ID из ADMIN_IDS."""
+
 from aiogram.filters import BaseFilter
 from aiogram.types import Message
 

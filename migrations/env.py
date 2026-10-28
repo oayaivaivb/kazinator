@@ -19,7 +19,7 @@ from bot.database.models import Base  # noqa: E402
 # access to the values within the .ini file in use.
 config = context.config
 
-# Берём адрес базы из .env, а не из alembic.ini
+# Берём адрес базы из .env, а не из alembic.ini — так конфиг не попадает в коммиты
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 # Interpret the config file for Python logging.

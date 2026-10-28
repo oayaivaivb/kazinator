@@ -1,5 +1,8 @@
 """add raffle_id to users
 
+Меняет уникальность с telegram_id на пару (telegram_id, raffle_id), что позволяет
+одному человеку участвовать в нескольких розыгрышах.
+
 Revision ID: c8b03317781a
 Revises: 239c896e9aad
 Create Date: 2026-10-27 14:57:37.082654

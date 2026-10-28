@@ -14,18 +14,19 @@ logging.basicConfig(level=logging.INFO)
 
 
 async def main():
+    """Точка запуска бота: сборка стека и старт поллинга."""
     bot = Bot(token=BOT_TOKEN)
     # FSM-состояния храним в Redis, чтобы перезапуск бота не сбрасывал анкеты
     storage = RedisStorage.from_url(REDIS_URL)
     dp = Dispatcher(storage=storage)
 
-    # Инициализация планировщика
+    # Планировщик проверяет дедлайны розыгрышей каждую минуту
     scheduler = AsyncIOScheduler()
     scheduler.add_job(check_deadlines, 'cron', minute='*', kwargs={'bot': bot})
     scheduler.start()
 
-    # Порядок регистрации роутеров критически важен!
-    # Сначала проверяем админов, затем обычных юзеров.
+    # Порядок важен: фильтры админов ставятся первыми, чтобы перехватить
+    # команды типа /admin до того, как их поглотит user_router
     dp.include_router(admin_router)
     dp.include_router(user_router)
 

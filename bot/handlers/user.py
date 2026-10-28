@@ -1,3 +1,5 @@
+"""Хендлеры пользователя: старт, проверка подписки и пошаговая регистрация."""
+
 from aiogram import Router, F, Bot
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -14,6 +16,7 @@ user_router = Router()
 
 @user_router.message(CommandStart())
 async def user_start(message: Message, state: FSMContext):
+    """/start: находит активный розыгрыш и запускает регистрацию."""
     await state.clear()
 
     async with async_session() as session:
@@ -70,6 +73,7 @@ async def user_start(message: Message, state: FSMContext):
 
 @user_router.callback_query(F.data == "check_subscription", UserRegistration.check_sub)
 async def check_sub_callback(callback: CallbackQuery, bot: Bot, state: FSMContext):
+    """Кнопка «Я подписался»: проверяет членство в канале через getChatMember."""
     data = await state.get_data()
     channel = data.get("channel")
 
@@ -92,10 +96,9 @@ async def check_sub_callback(callback: CallbackQuery, bot: Bot, state: FSMContex
 
 @user_router.message(UserRegistration.fio)
 async def process_fio(message: Message, state: FSMContext):
-    # Хендлер ловит любое сообщение в этом состоянии, включая стикеры и фото (text=None)
+    """Сбор ФИО. Защита от пустых сообщений (стикеры/фото без текста) и слишком длинного ввода."""
     if not message.text or not message.text.strip():
         return await message.answer("Пожалуйста, отправьте ФИО обычным текстом.")
-    # Добавляем базовую защиту от слишком длинного ввода
     fio = message.text.strip()[:250]
     await state.update_data(fio=fio)
     await message.answer("🎓 Отлично! Теперь введите название вашего ВУЗа:")
@@ -104,6 +107,7 @@ async def process_fio(message: Message, state: FSMContext):
 
 @user_router.message(UserRegistration.university)
 async def process_university(message: Message, state: FSMContext, bot: Bot):
+    """Финальный шаг регистрации: запись в БД + антифрод-алерт админам."""
     if not message.text or not message.text.strip():
         return await message.answer("Пожалуйста, отправьте название ВУЗа обычным текстом.")
     data = await state.get_data()

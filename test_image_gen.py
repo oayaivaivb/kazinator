@@ -1,3 +1,5 @@
+"""Локальный тест отрисовки: генерирует summary.png и personal.png из заглушек."""
+
 import os
 
 from bot.services.image_gen import _draw_summary_image, _draw_personal_image
@@ -5,6 +7,8 @@ from bot.services.image_gen import _draw_summary_image, _draw_personal_image
 
 # Имитируем класс пользователя из базы данных
 class MockWinner:
+    """Минимальный маппинг ORM-User для вызова image_gen вне бота."""
+
     def __init__(self, fio, university, username=None):
         self.fio = fio
         self.university = university
@@ -28,7 +32,8 @@ def run_test():
         f.write(summary_buf.getvalue())
     print("✅ test_summary.png сохранен")
 
-    # 2. Тест персональной карточки
+    # 2. Тест персональной карточки (username пока не участвует в отрисовке,
+    # но передаём для совместимости с реальной сигнатурой)
     personal_buf = _draw_personal_image(
         fio="Иванов Иван", rank=1, username="ivanov_tg"
     )

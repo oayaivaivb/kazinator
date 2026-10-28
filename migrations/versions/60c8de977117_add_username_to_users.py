@@ -1,5 +1,7 @@
 """add username to users
 
+Добавляет column username (nullable) — ник для отображения в таблице победителей.
+
 Revision ID: 60c8de977117
 Revises: c8b03317781a
 Create Date: 2026-10-27 15:46:05.121332

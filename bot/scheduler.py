@@ -9,7 +9,7 @@ from bot.services.raffle import finish_raffle
 
 
 async def check_deadlines(bot: Bot):
-    """Проверяет базу каждую минуту на наличие истекших розыгрышей."""
+    """Планировщик (каждую минуту): ищет истёкшие и завершает их."""
     async with async_session() as session:
         result = await session.execute(
             select(Raffle).where(

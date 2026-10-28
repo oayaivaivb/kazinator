@@ -1,3 +1,5 @@
+"""Хендлеры администратора: создание розыгрыша, досрочное завершение, бан, экспорт."""
+
 import io
 from datetime import datetime
 
@@ -25,6 +27,7 @@ admin_router.callback_query.filter(IsAdmin())
 
 @admin_router.message(CommandStart())
 async def admin_start(message: Message, state: FSMContext):
+    """Главное меню администратора."""
     await state.clear()  # Сбрасываем состояния на случай, если админ застрял на каком-то шаге
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⚙️ Настроить новый розыгрыш", callback_data="admin_new_raffle")],
@@ -39,12 +42,14 @@ async def admin_start(message: Message, state: FSMContext):
 
 @admin_router.callback_query(F.data == "admin_new_raffle")
 async def start_new_raffle(callback: CallbackQuery, state: FSMContext):
+    """Переход к шагу ввода количества победителей."""
     await callback.message.edit_text("Шаг 1. Введите количество победителей (число):")
     await state.set_state(NewRaffle.winner_slots)
 
 
 @admin_router.message(NewRaffle.winner_slots)
 async def process_winner_slots(message: Message, state: FSMContext):
+    """Принимаем число победителей (должно быть > 0)."""
     if not message.text.isdigit() or int(message.text) <= 0:
         return await message.answer("❌ Ошибка. Введите целое число больше нуля:")
     await state.update_data(winner_slots=int(message.text))
@@ -54,6 +59,7 @@ async def process_winner_slots(message: Message, state: FSMContext):
 
 @admin_router.message(NewRaffle.deadline)
 async def process_deadline(message: Message, state: FSMContext):
+    """Парсим дату и проверяем, что она в будущем."""
     try:
         deadline_dt = datetime.strptime(message.text.strip(), "%d.%m.%Y %H:%M")
         if deadline_dt <= datetime.now():
@@ -68,6 +74,7 @@ async def process_deadline(message: Message, state: FSMContext):
 
 @admin_router.message(NewRaffle.channel)
 async def process_channel(message: Message, state: FSMContext):
+    """Проверяем формат канала и показываем сводку для подтверждения."""
     channel = message.text.strip()
     require_subscribe = False
     if channel != '-':
@@ -101,6 +108,7 @@ async def process_channel(message: Message, state: FSMContext):
 
 @admin_router.callback_query(F.data == "confirm_new_raffle", NewRaffle.confirm)
 async def confirm_new_raffle(callback: CallbackQuery, state: FSMContext):
+    """Создаёт запись Raffle в БД и разблокирует регистрацию."""
     data = await state.get_data()
     # Записываем в БД
     deadline_dt = datetime.fromisoformat(data['deadline'])
@@ -123,6 +131,7 @@ async def confirm_new_raffle(callback: CallbackQuery, state: FSMContext):
 
 @admin_router.callback_query(F.data == "cancel_new_raffle", NewRaffle.confirm)
 async def cancel_new_raffle(callback: CallbackQuery, state: FSMContext):
+    """Отменяет создание розыгрыша и сбрасывает состояние."""
     await callback.message.edit_text("❌ Создание розыгрыша отменено.")
     await state.clear()
 
@@ -131,6 +140,7 @@ async def cancel_new_raffle(callback: CallbackQuery, state: FSMContext):
 
 @admin_router.callback_query(F.data == "admin_export")
 async def export_excel(callback: CallbackQuery):
+    """Выгружает всех участников последнего розыгрыша в Excel (в памяти, без дисковых записей)."""
     await callback.message.answer("⏳ Собираю данные, подождите...")
 
     async with async_session() as session:
@@ -187,6 +197,7 @@ async def export_excel(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin_ban")
 async def start_ban(callback: CallbackQuery, state: FSMContext):
+    """Запрашивает Telegram ID для бана/разбана."""
     await callback.message.answer("Введите Telegram ID пользователя, которого нужно забанить или разбанить:")
     await state.set_state(BanUser.waiting_for_id)
     await callback.answer()
@@ -194,6 +205,7 @@ async def start_ban(callback: CallbackQuery, state: FSMContext):
 
 @admin_router.message(BanUser.waiting_for_id)
 async def process_ban_id(message: Message, state: FSMContext):
+    """Ищет пользователя по telegram_id и переключает is_banned на противоположное значение."""
     # Хендлер ловит любое сообщение, включая стикеры и фото (text=None)
     if not message.text or not message.text.strip().isdigit():
         return await message.answer("❌ Пожалуйста, введите корректный числовой Telegram ID.")
@@ -226,6 +238,7 @@ async def process_ban_id(message: Message, state: FSMContext):
 
 @admin_router.callback_query(F.data == "admin_finish_early")
 async def ask_finish_early(callback: CallbackQuery):
+    """Подтверждение досрочного завершения (двойной клик)."""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⚠️ ДА, завершить сейчас", callback_data="confirm_finish_early")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_finish_early")]
@@ -238,11 +251,13 @@ async def ask_finish_early(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "cancel_finish_early")
 async def cancel_finish_early(callback: CallbackQuery):
+    """Отмена досрочного завершения."""
     await callback.message.edit_text("Действие отменено.")
 
 
 @admin_router.callback_query(F.data == "confirm_finish_early")
 async def do_finish_early(callback: CallbackQuery, bot: Bot):
+    """Находит активный розыгрыш и вызывает finish_raffle."""
     await callback.message.edit_text("⏳ Подвожу итоги...")
 
     async with async_session() as session:

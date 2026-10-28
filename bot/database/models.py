@@ -1,3 +1,5 @@
+"""ORM-модели SQLAlchemy: участники (User), розыгрыши (Raffle), победители (Winner)."""
+
 from datetime import datetime
 
 from sqlalchemy import BigInteger, Boolean, String, Text, ForeignKey, DateTime, Integer, UniqueConstraint
@@ -12,6 +14,8 @@ class Base(DeclarativeBase):
 class User(Base):
     __tablename__ = 'users'
 
+    # Один и тот же telegram_id может участвовать в разных розыгрышах,
+    # поэтому уникальность — по паре (telegram_id, raffle_id), а не по одному полю.
     __table_args__ = (UniqueConstraint('telegram_id', 'raffle_id', name='uix_telegram_raffle'),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
