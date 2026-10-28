@@ -1,19 +1,25 @@
 """Интеграционный тест FSM-сценария создания розыгрыша."""
+
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.context import FSMContext
-from aiogram.types import User, CallbackQuery, Message
-from bot.filters.is_admin import IsAdmin
-from bot.states.admin import NewRaffle
-from bot.handlers.admin import process_winner_slots, process_deadline, process_channel, confirm_new_raffle, cancel_new_raffle
-from bot.database.models import Raffle
-from bot.config import DATABASE_URL, ADMIN_IDS
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import CallbackQuery, Message, User
 from sqlalchemy import select
-from bot.database.engine import engine
 
+from bot.config import ADMIN_IDS, DATABASE_URL
+from bot.database.models import Raffle
+from bot.filters.is_admin import IsAdmin
+from bot.handlers.admin import (
+    cancel_new_raffle,
+    confirm_new_raffle,
+    process_channel,
+    process_deadline,
+    process_winner_slots,
+)
+from bot.states.admin import NewRaffle
 
 # --- Мок-объекты ---
 # ID берём из конфига, а не хардкодим: ADMIN_IDS меняется через .env
@@ -151,6 +157,7 @@ async def test_process_channel_none():
 # --- Тест 7: Шаг 3 — с подпиской ---
 async def test_process_channel_with_subscribe():
     from datetime import datetime
+
     state = make_fsm_context()
     await state.set_state(NewRaffle.channel)
 
@@ -181,6 +188,7 @@ async def test_process_channel_invalid():
 # --- Тест 9: Подтверждение — запись в БД ---
 async def test_confirm_new_raffle():
     from datetime import datetime
+
     state = make_fsm_context()
     await state.set_state(NewRaffle.confirm)
     await state.update_data(
@@ -196,12 +204,11 @@ async def test_confirm_new_raffle():
     # Проверим, что запись появилась в БД (синхронный движок для тестов)
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
+
     sync_url = DATABASE_URL.replace("+aiomysql", "+pymysql")
     sync_engine = create_engine(sync_url)
     with Session(sync_engine) as session:
-        raffle = session.execute(
-            select(Raffle).order_by(Raffle.id.desc()).limit(1)
-        ).scalar_one()
+        raffle = session.execute(select(Raffle).order_by(Raffle.id.desc()).limit(1)).scalar_one()
         assert raffle.winner_slots == 5
         assert raffle.is_finished is False
         assert raffle.require_subscribe is False

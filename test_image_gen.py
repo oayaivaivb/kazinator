@@ -2,7 +2,7 @@
 
 import os
 
-from bot.services.image_gen import _draw_summary_image, _draw_personal_image
+from bot.services.image_gen import _draw_personal_image, _draw_summary_image
 
 
 # Имитируем класс пользователя из базы данных
@@ -34,9 +34,7 @@ def run_test():
 
     # 2. Тест персональной карточки (username пока не участвует в отрисовке,
     # но передаём для совместимости с реальной сигнатурой)
-    personal_buf = _draw_personal_image(
-        fio="Иванов Иван", rank=1, username="ivanov_tg"
-    )
+    personal_buf = _draw_personal_image(fio="Иванов Иван", rank=1, username="ivanov_tg")
     with open("test_personal.png", "wb") as f:
         f.write(personal_buf.getvalue())
     print("✅ test_personal.png сохранен")

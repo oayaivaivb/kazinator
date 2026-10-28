@@ -4,18 +4,18 @@ import io
 from datetime import datetime
 
 import openpyxl
-from aiogram import Router, F, Bot
+from aiogram import Bot, F, Router
 from aiogram.filters import CommandStart
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, BufferedInputFile
 from aiogram.fsm.context import FSMContext
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.text_decorations import html_decoration as html
 from sqlalchemy import select, update
 
-from bot.filters.is_admin import IsAdmin
-from bot.states.admin import NewRaffle, BanUser
 from bot.database.engine import async_session
 from bot.database.models import Raffle, User
+from bot.filters.is_admin import IsAdmin
 from bot.services.raffle import finish_raffle
+from bot.states.admin import BanUser, NewRaffle
 
 admin_router = Router()
 
@@ -29,16 +29,19 @@ admin_router.callback_query.filter(IsAdmin())
 async def admin_start(message: Message, state: FSMContext):
     """Главное меню администратора."""
     await state.clear()  # Сбрасываем состояния на случай, если админ застрял на каком-то шаге
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⚙️ Настроить новый розыгрыш", callback_data="admin_new_raffle")],
-        [InlineKeyboardButton(text="🛑 Завершить досрочно", callback_data="admin_finish_early")],
-        [InlineKeyboardButton(text="📊 Выгрузить базу", callback_data="admin_export")],
-        [InlineKeyboardButton(text="🚫 Забанить/Разбанить", callback_data="admin_ban")]
-    ])
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⚙️ Настроить новый розыгрыш", callback_data="admin_new_raffle")],
+            [InlineKeyboardButton(text="🛑 Завершить досрочно", callback_data="admin_finish_early")],
+            [InlineKeyboardButton(text="📊 Выгрузить базу", callback_data="admin_export")],
+            [InlineKeyboardButton(text="🚫 Забанить/Разбанить", callback_data="admin_ban")],
+        ]
+    )
     await message.answer("🛠 Панель администратора. Выберите действие:", reply_markup=keyboard)
 
 
 # --- СЦЕНАРИЙ: НАСТРОИТЬ НОВЫЙ РОЗЫГРЫШ ---
+
 
 @admin_router.callback_query(F.data == "admin_new_raffle")
 async def start_new_raffle(callback: CallbackQuery, state: FSMContext):
@@ -65,8 +68,10 @@ async def process_deadline(message: Message, state: FSMContext):
         if deadline_dt <= datetime.now():
             return await message.answer("❌ Время должно быть в будущем. Попробуйте еще раз:")
         await state.update_data(deadline=deadline_dt.isoformat())
-        await message.answer("Шаг 3. Введите ссылку на канал для подписки (пример: https://t.me/channel или @channel)\n\n"
-                             "Если подписка не нужна, отправьте '-'.")
+        await message.answer(
+            "Шаг 3. Введите ссылку на канал для подписки (пример: https://t.me/channel или @channel)\n\n"
+            "Если подписка не нужна, отправьте '-'."
+        )
         await state.set_state(NewRaffle.channel)
     except ValueError:
         await message.answer("❌ Неверный формат. Используйте пример: 19.04.2024 18:00")
@@ -77,9 +82,11 @@ async def process_channel(message: Message, state: FSMContext):
     """Проверяем формат канала и показываем сводку для подтверждения."""
     channel = message.text.strip()
     require_subscribe = False
-    if channel != '-':
-        if not (channel.startswith('@') or channel.startswith('https://t.me/')):
-            return await message.answer("❌ Неверный формат ссылки. Используйте @username или https://t.me/... (или '-' для пропуска).")
+    if channel != "-":
+        if not (channel.startswith("@") or channel.startswith("https://t.me/")):
+            return await message.answer(
+                "❌ Неверный формат ссылки. Используйте @username или https://t.me/... (или '-' для пропуска)."
+            )
         require_subscribe = True
     else:
         channel = None
@@ -88,7 +95,7 @@ async def process_channel(message: Message, state: FSMContext):
 
     # Формируем сводку
     data = await state.get_data()
-    deadline_dt = datetime.fromisoformat(data['deadline'])
+    deadline_dt = datetime.fromisoformat(data["deadline"])
     summary = (
         "📋 <b>Сводка по розыгрышу:</b>\n"
         f"Победителей: {data['winner_slots']}\n"
@@ -96,10 +103,12 @@ async def process_channel(message: Message, state: FSMContext):
         f"Канал: {data['channel'] if data['channel'] else 'Нет'}"
     )
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Подтвердить и открыть", callback_data="confirm_new_raffle")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_new_raffle")]
-    ])
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Подтвердить и открыть", callback_data="confirm_new_raffle")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_new_raffle")],
+        ]
+    )
 
     # Используем parse_mode="HTML" для жирного текста
     await message.answer(summary, reply_markup=keyboard, parse_mode="HTML")
@@ -111,16 +120,16 @@ async def confirm_new_raffle(callback: CallbackQuery, state: FSMContext):
     """Создаёт запись Raffle в БД и разблокирует регистрацию."""
     data = await state.get_data()
     # Записываем в БД
-    deadline_dt = datetime.fromisoformat(data['deadline'])
+    deadline_dt = datetime.fromisoformat(data["deadline"])
     async with async_session() as session:
         new_raffle = Raffle(
-            winner_slots=data['winner_slots'],
+            winner_slots=data["winner_slots"],
             deadline_at=deadline_dt,
-            channel_username=data['channel'],
-            require_subscribe=data['require_subscribe'],
+            channel_username=data["channel"],
+            require_subscribe=data["require_subscribe"],
             is_finished=False,
             # Оставляем комментарии выключенными по умолчанию, как договаривались в упрощенном ТЗ
-            require_comment=False
+            require_comment=False,
         )
         session.add(new_raffle)
         await session.commit()
@@ -138,6 +147,7 @@ async def cancel_new_raffle(callback: CallbackQuery, state: FSMContext):
 
 # --- СЦЕНАРИЙ: ЭКСПОРТ В EXCEL ---
 
+
 @admin_router.callback_query(F.data == "admin_export")
 async def export_excel(callback: CallbackQuery):
     """Выгружает всех участников последнего розыгрыша в Excel (в памяти, без дисковых записей)."""
@@ -145,17 +155,13 @@ async def export_excel(callback: CallbackQuery):
 
     async with async_session() as session:
         # Ищем последний (текущий или только что завершенный) розыгрыш
-        latest_raffle = (await session.execute(
-            select(Raffle).order_by(Raffle.id.desc()).limit(1)
-        )).scalars().first()
+        latest_raffle = (await session.execute(select(Raffle).order_by(Raffle.id.desc()).limit(1))).scalars().first()
 
         if not latest_raffle:
             await callback.answer()
             return await callback.message.answer("База данных пуста.")
 
-        result = await session.execute(
-            select(User).where(User.raffle_id == latest_raffle.id).order_by(User.id.desc())
-        )
+        result = await session.execute(select(User).where(User.raffle_id == latest_raffle.id).order_by(User.id.desc()))
         rows = result.scalars().all()
 
     if not rows:
@@ -172,16 +178,18 @@ async def export_excel(callback: CallbackQuery):
     ws.append(headers)
 
     for user in rows:
-        ws.append([
-            user.id,
-            user.telegram_id,
-            user.fio,
-            user.university,
-            user.raffle_id,
-            "Да" if user.is_subscribed else "Нет",
-            "ЗАБАНЕН" if user.is_banned else "Активен",
-            user.registered_at.strftime("%d.%m.%Y %H:%M")
-        ])
+        ws.append(
+            [
+                user.id,
+                user.telegram_id,
+                user.fio,
+                user.university,
+                user.raffle_id,
+                "Да" if user.is_subscribed else "Нет",
+                "ЗАБАНЕН" if user.is_banned else "Активен",
+                user.registered_at.strftime("%d.%m.%Y %H:%M"),
+            ]
+        )
 
     # Сохраняем в буфер
     buffer = io.BytesIO()
@@ -194,6 +202,7 @@ async def export_excel(callback: CallbackQuery):
 
 
 # --- СЦЕНАРИЙ: БАН / РАЗБАН ---
+
 
 @admin_router.callback_query(F.data == "admin_ban")
 async def start_ban(callback: CallbackQuery, state: FSMContext):
@@ -213,9 +222,7 @@ async def process_ban_id(message: Message, state: FSMContext):
     target_id = int(message.text.strip())
 
     async with async_session() as session:
-        result = await session.execute(
-            select(User).where(User.telegram_id == target_id).limit(1)
-        )
+        result = await session.execute(select(User).where(User.telegram_id == target_id).limit(1))
         user = result.scalars().first()
 
         if not user:
@@ -224,9 +231,7 @@ async def process_ban_id(message: Message, state: FSMContext):
 
         # Меняем статус на противоположный для всех записей этого пользователя
         new_status = not user.is_banned
-        await session.execute(
-            update(User).where(User.telegram_id == target_id).values(is_banned=new_status)
-        )
+        await session.execute(update(User).where(User.telegram_id == target_id).values(is_banned=new_status))
         await session.commit()
 
     action = "забанен 🚫" if new_status else "разбанен ✅"
@@ -236,13 +241,16 @@ async def process_ban_id(message: Message, state: FSMContext):
 
 # --- СЦЕНАРИЙ: ДОСРОЧНОЕ ЗАВЕРШЕНИЕ ---
 
+
 @admin_router.callback_query(F.data == "admin_finish_early")
 async def ask_finish_early(callback: CallbackQuery):
     """Подтверждение досрочного завершения (двойной клик)."""
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⚠️ ДА, завершить сейчас", callback_data="confirm_finish_early")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_finish_early")]
-    ])
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⚠️ ДА, завершить сейчас", callback_data="confirm_finish_early")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_finish_early")],
+        ]
+    )
     await callback.message.edit_text(
         "Вы уверены? Это сразу закроет регистрацию и выберет победителей.",
         reply_markup=keyboard,
@@ -261,9 +269,11 @@ async def do_finish_early(callback: CallbackQuery, bot: Bot):
     await callback.message.edit_text("⏳ Подвожу итоги...")
 
     async with async_session() as session:
-        active_raffle = (await session.execute(
-            select(Raffle).where(Raffle.is_finished == False).order_by(Raffle.id.desc())
-        )).scalars().first()
+        active_raffle = (
+            (await session.execute(select(Raffle).where(Raffle.is_finished == False).order_by(Raffle.id.desc())))
+            .scalars()
+            .first()
+        )
 
         if not active_raffle:
             return await callback.message.edit_text("❌ Нет активных розыгрышей для завершения.")
@@ -274,4 +284,3 @@ async def do_finish_early(callback: CallbackQuery, bot: Bot):
         await callback.message.answer("✅ Розыгрыш успешно завершен. Результаты отправлены.")
     else:
         await callback.message.answer("❌ Ошибка при завершении розыгрыша.")
-

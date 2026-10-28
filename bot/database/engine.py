@@ -1,6 +1,6 @@
 """Асинхронный движок SQLAlchemy и фабрика сессий (общие для всего бота)."""
 
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from bot.config import DATABASE_URL
 

@@ -1,15 +1,15 @@
 """Хендлеры пользователя: старт, проверка подписки и пошаговая регистрация."""
 
-from aiogram import Router, F, Bot
+from aiogram import Bot, F, Router
 from aiogram.filters import CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
-from sqlalchemy import select, func, text
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import func, select, text
 
 from bot.config import ADMIN_IDS
-from bot.states.user import UserRegistration
 from bot.database.engine import async_session
-from bot.database.models import User, Raffle
+from bot.database.models import Raffle, User
+from bot.states.user import UserRegistration
 
 user_router = Router()
 
@@ -21,9 +21,7 @@ async def user_start(message: Message, state: FSMContext):
 
     async with async_session() as session:
         # Ищем последний активный розыгрыш
-        result = await session.execute(
-            select(Raffle).where(Raffle.is_finished == False).order_by(Raffle.id.desc())
-        )
+        result = await session.execute(select(Raffle).where(Raffle.is_finished == False).order_by(Raffle.id.desc()))
         active_raffle = result.scalars().first()
 
         if not active_raffle:
@@ -57,13 +55,15 @@ async def user_start(message: Message, state: FSMContext):
     if active_raffle.require_subscribe and active_raffle.channel_username:
         # Формируем корректную ссылку для кнопки
         url = active_raffle.channel_username
-        if url.startswith('@'):
+        if url.startswith("@"):
             url = f"https://t.me/{url[1:]}"
 
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📢 Перейдите в канал", url=url)],
-            [InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription")]
-        ])
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="📢 Перейдите в канал", url=url)],
+                [InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription")],
+            ]
+        )
         await message.answer("Для участия необходимо подписаться на наш канал!", reply_markup=keyboard)
         await state.set_state(UserRegistration.check_sub)
     else:
@@ -83,13 +83,13 @@ async def check_sub_callback(callback: CallbackQuery, bot: Bot, state: FSMContex
 
     try:
         member = await bot.get_chat_member(chat_id=channel, user_id=callback.from_user.id)
-        if member.status in ['member', 'administrator', 'creator']:
+        if member.status in ["member", "administrator", "creator"]:
             await callback.message.edit_text("✅ Подписка подтверждена!\n\nВведите ваши ФИО:")
             await state.set_state(UserRegistration.fio)
         else:
             # Показываем всплывающее окно (alert), чтобы не засорять историю чата
             await callback.answer("❌ Вы еще не подписались на канал!", show_alert=True)
-    except Exception as e:
+    except Exception:
         await callback.message.answer("⚠️ Ошибка проверки подписки. Возможно, бот не добавлен в администраторы канала.")
         await callback.answer()
 
@@ -123,7 +123,7 @@ async def process_university(message: Message, state: FSMContext, bot: Bot):
             fio=fio,
             university=university,
             is_subscribed=data.get("require_subscribe", False),
-            is_banned=False
+            is_banned=False,
         )
         session.add(new_user)
         await session.commit()
@@ -138,9 +138,7 @@ async def process_university(message: Message, state: FSMContext, bot: Bot):
     # условие никогда не выполнится и алерт не сработает вообще.
     async with async_session() as fraud_session:
         recent_regs = await fraud_session.scalar(
-            select(func.count())
-            .select_from(User)
-            .where(User.created_at >= text("NOW() - INTERVAL 1 MINUTE"))
+            select(func.count()).select_from(User).where(User.created_at >= text("NOW() - INTERVAL 1 MINUTE"))
         )
 
     if recent_regs and recent_regs > 5:
@@ -149,9 +147,8 @@ async def process_university(message: Message, state: FSMContext, bot: Bot):
                 await bot.send_message(
                     chat_id=admin_id,
                     text=f"⚠️ <b>АЛЕРТ АНТИФРОД</b>\n"
-                         f"Замечена аномальная активность: {recent_regs} регистраций за последнюю минуту!",
+                    f"Замечена аномальная активность: {recent_regs} регистраций за последнюю минуту!",
                     parse_mode="HTML",
                 )
             except Exception:
                 pass
-

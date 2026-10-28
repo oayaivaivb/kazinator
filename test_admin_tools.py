@@ -1,4 +1,5 @@
 """Тесты Этапа 4: выгрузка в Excel и бан/разбан (bot/handlers/admin.py)."""
+
 import asyncio
 import io
 from datetime import datetime
@@ -8,11 +9,12 @@ import openpyxl
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import CallbackQuery, Message, User as TgUser
+from aiogram.types import CallbackQuery, Message
+from aiogram.types import User as TgUser
 from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session
 
-from bot.config import DATABASE_URL, ADMIN_IDS
+from bot.config import ADMIN_IDS, DATABASE_URL
 from bot.database.models import Raffle, User
 from bot.filters.is_admin import IsAdmin
 from bot.handlers.admin import export_excel, process_ban_id, start_ban
@@ -60,8 +62,12 @@ def cleanup_db():
 
 def add_raffle(**kw):
     defaults = dict(
-        winner_slots=3, require_subscribe=False, channel_username=None,
-        require_comment=False, comment_min_length=0, is_finished=False,
+        winner_slots=3,
+        require_subscribe=False,
+        channel_username=None,
+        require_comment=False,
+        comment_min_length=0,
+        is_finished=False,
         deadline_at=datetime(2030, 4, 19, 18, 0),
     )
     defaults.update(kw)
@@ -83,6 +89,7 @@ def add_user(raffle_id, tg_id=111, fio="Иванов И.И.", university="МГУ
 
 
 # === ЭКСПОРТ ===
+
 
 async def test_export_empty_db():
     cleanup_db()
@@ -126,6 +133,7 @@ async def test_export_no_users_in_latest():
 
 
 # === БАН ===
+
 
 async def test_ban_toggle_on():
     cleanup_db()
@@ -253,6 +261,7 @@ async def run_all():
 
     cleanup_db()
     from bot.database.engine import engine
+
     await engine.dispose()
     print(f"\nИтого: {passed} passed, {failed} failed")
     return failed
@@ -260,4 +269,5 @@ async def run_all():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(1 if asyncio.run(run_all()) else 0)

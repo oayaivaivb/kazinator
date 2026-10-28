@@ -1,21 +1,23 @@
 """Тесты Ядра: finish_raffle, check_deadlines, досрочное завершение."""
+
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message, User as TgUser
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import CallbackQuery
+from aiogram.types import User as TgUser
 from sqlalchemy import create_engine, delete, func, select
 from sqlalchemy.orm import Session
 
-from bot.config import DATABASE_URL, ADMIN_IDS
+from bot.config import ADMIN_IDS, DATABASE_URL
+from bot.database.engine import async_session
 from bot.database.models import Raffle, User, Winner
-from bot.handlers.admin import do_finish_early, ask_finish_early, cancel_finish_early
+from bot.handlers.admin import ask_finish_early, cancel_finish_early, do_finish_early
 from bot.scheduler import check_deadlines
 from bot.services.raffle import finish_raffle
-from bot.database.engine import async_session
 
 BOT_ID = 8982338897
 if not ADMIN_IDS:
@@ -57,8 +59,12 @@ def cleanup_db():
 
 def add_raffle(**kw):
     defaults = dict(
-        winner_slots=3, require_subscribe=False, channel_username=None,
-        require_comment=False, comment_min_length=0, is_finished=False,
+        winner_slots=3,
+        require_subscribe=False,
+        channel_username=None,
+        require_comment=False,
+        comment_min_length=0,
+        is_finished=False,
         deadline_at=datetime(2030, 4, 19, 18, 0),
     )
     defaults.update(kw)
@@ -71,9 +77,15 @@ def add_raffle(**kw):
 
 def add_user(raffle_id, tg_id, fio, university="МГУ", username=None):
     with Session(SYNC_ENGINE) as s:
-        u = User(telegram_id=tg_id, raffle_id=raffle_id, fio=fio,
-                 university=university, username=username,
-                 is_subscribed=False, is_banned=False)
+        u = User(
+            telegram_id=tg_id,
+            raffle_id=raffle_id,
+            fio=fio,
+            university=university,
+            username=username,
+            is_subscribed=False,
+            is_banned=False,
+        )
         s.add(u)
         s.commit()
         return u.id
@@ -81,12 +93,11 @@ def add_user(raffle_id, tg_id, fio, university="МГУ", username=None):
 
 def count_winners(raffle_id):
     with Session(SYNC_ENGINE) as s:
-        return s.execute(
-            select(func.count(Winner.id)).where(Winner.raffle_id == raffle_id)
-        ).scalar()
+        return s.execute(select(func.count(Winner.id)).where(Winner.raffle_id == raffle_id)).scalar()
 
 
 # === finish_raffle ===
+
 
 async def test_finish_normal():
     """Обычное завершение: N участников, N победителей."""
@@ -111,6 +122,7 @@ async def test_finish_normal():
     text = bot.send_message.call_args.kwargs["text"]
     assert "завершен" in text
     assert "3" in text  # участников
+
 
 async def test_finish_fewer_users_than_slots():
     cleanup_db()
@@ -198,6 +210,7 @@ async def test_finish_sends_to_all_admins():
 
 # === check_deadlines ===
 
+
 async def test_scheduler_expires_raffle():
     cleanup_db()
     expired = add_raffle(deadline_at=datetime(2020, 1, 1))
@@ -226,6 +239,7 @@ async def test_scheduler_no_expired():
 
 
 # === do_finish_early ===
+
 
 async def test_early_finish():
     cleanup_db()
@@ -271,6 +285,7 @@ async def test_cancel_finish():
 
 # === Runner ===
 
+
 async def test_finish_sends_photos():
     """Сводка всем админам + личная карточка каждому победителю."""
     cleanup_db()
@@ -283,8 +298,9 @@ async def test_finish_sends_photos():
         await finish_raffle(r, session, bot)
 
     # админам сводка (len(ADMIN_IDS)) + 2 личные
-    assert bot.send_photo.call_count == len(ADMIN_IDS) + 2, \
-        f"ожидали {len(ADMIN_IDS) + 2} фото, получили {bot.send_photo.call_count}"
+    assert (
+        bot.send_photo.call_count == len(ADMIN_IDS) + 2
+    ), f"ожидали {len(ADMIN_IDS) + 2} фото, получили {bot.send_photo.call_count}"
 
     # Проверяем, что это валильный PNG
     first_photo = bot.send_photo.call_args_list[0].kwargs["photo"]
@@ -292,7 +308,7 @@ async def test_finish_sends_photos():
     assert len(first_photo.data) > 1000, "пустое изображение"
 
     # У каждого админа должен быть полный файл (ловушка с съеденным буфером)
-    sizes = [len(c.kwargs["photo"].data) for c in bot.send_photo.call_args_list[:len(ADMIN_IDS)]]
+    sizes = [len(c.kwargs["photo"].data) for c in bot.send_photo.call_args_list[: len(ADMIN_IDS)]]
     assert all(s == sizes[0] for s in sizes), f"размеры сводок по админам различаются: {sizes}"
     assert sizes[0] > 1000, "второму админу ушёл пустой буфер"
 
@@ -385,6 +401,7 @@ async def run_all():
 
     cleanup_db()
     from bot.database.engine import engine
+
     await engine.dispose()
     print(f"\nИтого: {passed} passed, {failed} failed")
     return failed
@@ -392,4 +409,5 @@ async def run_all():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(1 if asyncio.run(run_all()) else 0)

@@ -1,0 +1,12 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+# E, F - базовые ошибки и стиль, I - сортировка импортов (isort)
+select = ["E", "F", "I"]
+ignore = ["E712"]  # Добавили игнор E712
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

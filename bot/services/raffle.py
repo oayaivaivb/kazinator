@@ -4,12 +4,12 @@ import random
 from aiogram import Bot
 from aiogram.types import BufferedInputFile
 from aiogram.utils.text_decorations import html_decoration as html
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import ADMIN_IDS
 from bot.database.models import Raffle, User, Winner
-from bot.services.image_gen import generate_summary_image, generate_personal_image
+from bot.services.image_gen import generate_personal_image, generate_summary_image
 
 
 async def finish_raffle(raffle_id: int, session: AsyncSession, bot: Bot) -> bool:
@@ -21,9 +21,7 @@ async def finish_raffle(raffle_id: int, session: AsyncSession, bot: Bot) -> bool
     raffle.is_finished = True
 
     # 2. Выбираем валидных участников (забаненные в выборку не попадают)
-    users_result = await session.execute(
-        select(User).where(User.raffle_id == raffle_id, User.is_banned == False)
-    )
+    users_result = await session.execute(select(User).where(User.raffle_id == raffle_id, User.is_banned == False))
     users = list(users_result.scalars().all())
 
     # 3. Рандомизация (выбираем N уникальных, или всех, если участников меньше)
@@ -45,10 +43,7 @@ async def finish_raffle(raffle_id: int, session: AsyncSession, bot: Bot) -> bool
     )
     for i, w in enumerate(winners, 1):
         nick = f" — @{w.username}" if w.username else ""
-        report += (
-            f"{i}. {html.quote(w.fio)}\n"
-            f"   {html.quote(w.university)}{nick} (ID: {w.telegram_id})\n"
-        )
+        report += f"{i}. {html.quote(w.fio)}\n" f"   {html.quote(w.university)}{nick} (ID: {w.telegram_id})\n"
 
     # Рассылка админам
     for admin_id in ADMIN_IDS:

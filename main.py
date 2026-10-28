@@ -22,7 +22,7 @@ async def main():
 
     # Планировщик проверяет дедлайны розыгрышей каждую минуту
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(check_deadlines, 'cron', minute='*', kwargs={'bot': bot})
+    scheduler.add_job(check_deadlines, "cron", minute="*", kwargs={"bot": bot})
     scheduler.start()
 
     # Порядок важен: фильтры админов ставятся первыми, чтобы перехватить
