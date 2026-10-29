@@ -5,17 +5,29 @@ services:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: raffle_db
       TZ: Europe/Moscow
-    ports:
-      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    # Порт наружу не публикуем: на прод-сервере 3306 занят нативным MySQL.
+    # Локально для доступа из IDE создайте docker-compose.override.yml вида:
+    #   services:
+    #     mysql:
+    #       ports: ["127.0.0.1:3307:3306"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     restart: unless-stopped
 
   redis:
     image: redis:alpine
-    ports:
-      - "6379:6379"
+    # Аналогично redis: публикацию 6379 не публикуем.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     restart: unless-stopped
 
   bot:
@@ -28,8 +40,10 @@ services:
       ADMIN_IDS: ${ADMIN_IDS}
       TZ: Europe/Moscow
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

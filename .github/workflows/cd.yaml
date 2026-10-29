@@ -1,0 +1,69 @@
+name: CD
+
+# Деплой = проверка кода (ruff+compile), потом scp + docker compose на сервере.
+# Сервер тот же, что и раньше: secrets из настроек репозитория (SSH_*).
+on:
+  push:
+    branches: ["prod"]
+
+jobs:
+  quick-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Format check (ruff)
+        run: ruff format --check .
+
+      - name: Compile check
+        run: python -m compileall bot main.py migrations
+
+  deploy:
+    needs: quick-check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy files to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "./*"
+          target: /opt/kazik
+          overwrite: true
+
+      - name: Rebuild and restart on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            cd /opt/kazik
+            docker compose up -d --build --wait mysql redis
+            docker compose build bot
+            # Миграции БД (alembic) гоняем одной командой до старта бота
+            docker compose run --rm bot alembic upgrade head
+            docker compose up -d bot
+            docker image prune -f

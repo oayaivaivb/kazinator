@@ -298,9 +298,9 @@ async def test_finish_sends_photos():
         await finish_raffle(r, session, bot)
 
     # админам сводка (len(ADMIN_IDS)) + 2 личные
-    assert (
-        bot.send_photo.call_count == len(ADMIN_IDS) + 2
-    ), f"ожидали {len(ADMIN_IDS) + 2} фото, получили {bot.send_photo.call_count}"
+    assert bot.send_photo.call_count == len(ADMIN_IDS) + 2, (
+        f"ожидали {len(ADMIN_IDS) + 2} фото, получили {bot.send_photo.call_count}"
+    )
 
     # Проверяем, что это валильный PNG
     first_photo = bot.send_photo.call_args_list[0].kwargs["photo"]

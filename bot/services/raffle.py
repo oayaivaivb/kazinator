@@ -43,7 +43,7 @@ async def finish_raffle(raffle_id: int, session: AsyncSession, bot: Bot) -> bool
     )
     for i, w in enumerate(winners, 1):
         nick = f" — @{w.username}" if w.username else ""
-        report += f"{i}. {html.quote(w.fio)}\n" f"   {html.quote(w.university)}{nick} (ID: {w.telegram_id})\n"
+        report += f"{i}. {html.quote(w.fio)}\n   {html.quote(w.university)}{nick} (ID: {w.telegram_id})\n"
 
     # Рассылка админам
     for admin_id in ADMIN_IDS:
