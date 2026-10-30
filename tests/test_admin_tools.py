@@ -122,6 +122,9 @@ async def test_export_only_latest_raffle():
     assert banned[333] == "ЗАБАНЕН"
     assert banned[222] == "Активен"
 
+    # Проверяем, что автофильтр установлен на весь диапазон (3 строки, 8 колонок → A1:H3)
+    assert ws.auto_filter.ref == "A1:H3", f"ожидали A1:H3, получили {ws.auto_filter.ref}"
+
 
 async def test_export_no_users_in_latest():
     cleanup_db()

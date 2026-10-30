@@ -9,6 +9,7 @@ from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.text_decorations import html_decoration as html
+from openpyxl.utils import get_column_letter
 from sqlalchemy import select, update
 
 from bot.database.engine import async_session
@@ -69,7 +70,7 @@ async def process_deadline(message: Message, state: FSMContext):
             return await message.answer("❌ Время должно быть в будущем. Попробуйте еще раз:")
         await state.update_data(deadline=deadline_dt.isoformat())
         await message.answer(
-            "Шаг 3. Введите ссылку на канал для подписки (пример: https://t.me/channel или @channel)\n\n"
+            "Шаг 3. Введите ссылку на канал для подписки (пример: https://t.me/... или @...)\n\n"
             "Если подписка не нужна, отправьте '-'."
         )
         await state.set_state(NewRaffle.channel)
@@ -190,6 +191,10 @@ async def export_excel(callback: CallbackQuery):
                 user.registered_at.strftime("%d.%m.%Y %H:%M"),
             ]
         )
+
+    # Включаем автофильтр по всем колонкам (включая ФИО)
+    last_col = get_column_letter(ws.max_column)
+    ws.auto_filter.ref = f"A1:{last_col}{ws.max_row}"
 
     # Сохраняем в буфер
     buffer = io.BytesIO()
