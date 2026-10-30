@@ -1,7 +1,7 @@
 """Хендлеры пользователя: старт, проверка подписки и пошаговая регистрация."""
 
 from aiogram import Bot, F, Router
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import func, select, text
@@ -12,6 +12,24 @@ from bot.database.models import Raffle, User
 from bot.states.user import UserRegistration
 
 user_router = Router()
+
+USER_HELP_TEXT = (
+    "🎉 <b>Как участвовать в розыгрыше</b>\n\n"
+    "1. Запустите регистрацию командой /start.\n"
+    "2. Если условие розыгрыша — подписка на канал, подпишитесь и нажмите «✅ Я подписался».\n"
+    "3. Введите ФИО, затем название ВУЗа.\n\n"
+    "С одного аккаунта — одна заявка на конкретный розыгрыш.\n"
+    "Победителей определяет случайный рандомайзер после окончания приёма заявок.\n\n"
+    "🏆 Победителям приходит персональная картинка-поздравление."
+)
+
+
+# /help регистрируем до шагов анкеты: иначе ввод проглотит хендлер UserRegistration.fio.
+# Состояние не трогаем — после справки анкета продолжится с того же шага.
+@user_router.message(Command("help", ignore_case=True))
+async def user_help(message: Message):
+    """Короткая инструкция для участника."""
+    await message.answer(USER_HELP_TEXT, parse_mode="HTML")
 
 
 @user_router.message(CommandStart())
