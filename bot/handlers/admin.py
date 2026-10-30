@@ -10,7 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.text_decorations import html_decoration as html
 from openpyxl.utils import get_column_letter
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from bot.database.engine import async_session
 from bot.database.models import Raffle, User
@@ -175,7 +175,7 @@ async def export_excel(callback: CallbackQuery):
     ws.title = "Участники"
 
     # Заголовки
-    headers = ["ID", "Telegram ID", "ФИО", "ВУЗ", "ID Розыгрыша", "Подписка", "Бан", "Дата регистрации"]
+    headers = ["ID", "Telegram ID", "Username", "ФИО", "ВУЗ", "ID Розыгрыша", "Подписка", "Бан", "Дата регистрации"]
     ws.append(headers)
 
     for user in rows:
@@ -183,16 +183,17 @@ async def export_excel(callback: CallbackQuery):
             [
                 user.id,
                 user.telegram_id,
+                f"@{user.username.lstrip('@')}" if user.username else "",
                 user.fio,
                 user.university,
                 user.raffle_id,
                 "Да" if user.is_subscribed else "Нет",
-                "ЗАБАНЕН" if user.is_banned else "Активен",
+                "ЗАБАНЕН" if user.is_banned else "Нет",
                 user.registered_at.strftime("%d.%m.%Y %H:%M"),
             ]
         )
 
-    # Включаем автофильтр по всем колонкам (включая ФИО)
+    # Включаем автофильтр по всем колонкам (включая ФИО и Username)
     last_col = get_column_letter(ws.max_column)
     ws.auto_filter.ref = f"A1:{last_col}{ws.max_row}"
 
@@ -211,36 +212,59 @@ async def export_excel(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin_ban")
 async def start_ban(callback: CallbackQuery, state: FSMContext):
-    """Запрашивает Telegram ID для бана/разбана."""
-    await callback.message.answer("Введите Telegram ID пользователя, которого нужно забанить или разбанить:")
+    """Запрашивает Telegram ID или username в формате @username."""
+    await callback.message.answer(
+        "Введите Telegram ID (число) или username в формате @username, " "которого нужно забанить или разбанить:"
+    )
     await state.set_state(BanUser.waiting_for_id)
     await callback.answer()
 
 
 @admin_router.message(BanUser.waiting_for_id)
 async def process_ban_id(message: Message, state: FSMContext):
-    """Ищет пользователя по telegram_id и переключает is_banned на противоположное значение."""
+    """Ищет пользователя по telegram_id или username (@формат) и переключает is_banned."""
     # Хендлер ловит любое сообщение, включая стикеры и фото (text=None)
-    if not message.text or not message.text.strip().isdigit():
-        return await message.answer("❌ Пожалуйста, введите корректный числовой Telegram ID.")
+    raw = (message.text or "").strip()
+    if not raw:
+        return await message.answer("❌ Введите Telegram ID (число) или username (@формат).")
 
-    target_id = int(message.text.strip())
+    # Числовой ввод — ищем по telegram_id
+    if raw.isdigit():
+        lookup_value = int(raw)
+        async with async_session() as session:
+            result = await session.execute(select(User).where(User.telegram_id == lookup_value).limit(1))
+            user = result.scalars().first()
 
-    async with async_session() as session:
-        result = await session.execute(select(User).where(User.telegram_id == target_id).limit(1))
-        user = result.scalars().first()
+            if not user:
+                await state.clear()
+                return await message.answer("Пользователь с таким Telegram ID не найден в базе.")
 
-        if not user:
-            await message.answer("Пользователь с таким ID не найден в базе.")
-            return await state.clear()
+            new_status = not user.is_banned
+            await session.execute(update(User).where(User.telegram_id == user.telegram_id).values(is_banned=new_status))
+            await session.commit()
+            fio = user.fio
 
-        # Меняем статус на противоположный для всех записей этого пользователя
-        new_status = not user.is_banned
-        await session.execute(update(User).where(User.telegram_id == target_id).values(is_banned=new_status))
-        await session.commit()
+    # Ввод начинается с @ — ищем по username (регистронезависимо)
+    elif raw.startswith("@"):
+        lookup_value = raw.lstrip("@").lower()
+        async with async_session() as session:
+            result = await session.execute(select(User).where(func.lower(User.username) == lookup_value).limit(1))
+            user = result.scalars().first()
+
+            if not user:
+                await state.clear()
+                return await message.answer(f"Пользователь с username «{raw}» не найден в базе.")
+
+            new_status = not user.is_banned
+            await session.execute(update(User).where(User.telegram_id == user.telegram_id).values(is_banned=new_status))
+            await session.commit()
+            fio = user.fio
+
+    else:
+        return await message.answer("❌ Введите Telegram ID (число) или username в формате @username.")
 
     action = "забанен 🚫" if new_status else "разбанен ✅"
-    await message.answer(f"Пользователь <b>{html.quote(user.fio)}</b> был {action}.", parse_mode="HTML")
+    await message.answer(f"Пользователь <b>{html.quote(fio)}</b> был {action}.", parse_mode="HTML")
     await state.clear()
 
 

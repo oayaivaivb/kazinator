@@ -78,11 +78,11 @@ def add_raffle(**kw):
         return r.id
 
 
-def add_user(raffle_id, tg_id=111, fio="Иванов И.И.", university="МГУ", **kw):
+def add_user(raffle_id, tg_id=111, fio="Иванов И.И.", university="МГУ", username=None, **kw):
     defaults = dict(is_subscribed=True, is_banned=False)
     defaults.update(kw)
     with Session(SYNC_ENGINE) as s:
-        u = User(telegram_id=tg_id, raffle_id=raffle_id, fio=fio, university=university, **defaults)
+        u = User(telegram_id=tg_id, raffle_id=raffle_id, fio=fio, university=university, username=username, **defaults)
         s.add(u)
         s.commit()
         return u.id
@@ -104,7 +104,7 @@ async def test_export_only_latest_raffle():
     r1 = add_raffle()
     add_user(r1, tg_id=111, fio="Старый С.С.", university="ВУЗ-1")
     r2 = add_raffle()
-    add_user(r2, tg_id=222, fio="Новый Н.Н.", university="ВУЗ-2")
+    add_user(r2, tg_id=222, fio="Новый Н.Н.", university="ВУЗ-2", username="noviy")
     add_user(r2, tg_id=333, fio="Новый2 Н.Н.Н.", university="ВУЗ-2", is_banned=True)
 
     cb = make_cb("admin_export")
@@ -118,12 +118,17 @@ async def test_export_only_latest_raffle():
     assert len(rows) == 3, f"ожидали 2 строки (только raffle2) + заголовок, получили {len(rows)}"
     tg_ids = {r[1] for r in rows[1:]}
     assert tg_ids == {222, 333}, f"в выгрузке не должно быть старого raffle1, есть: {tg_ids}"
-    banned = {r[1]: r[6] for r in rows[1:]}
+    banned = {r[1]: r[7] for r in rows[1:]}
     assert banned[333] == "ЗАБАНЕН"
     assert banned[222] == "Активен"
 
-    # Проверяем, что автофильтр установлен на весь диапазон (3 строки, 8 колонок → A1:H3)
-    assert ws.auto_filter.ref == "A1:H3", f"ожидали A1:H3, получили {ws.auto_filter.ref}"
+    # Колонка Username: с @ если ник задан, пусто если его нет (openpyxl читает пустую ячейку как None)
+    usernames = {r[1]: r[2] for r in rows[1:]}
+    assert usernames[222] == "@noviy", f"ожидали @noviy, получили {usernames[222]!r}"
+    assert not usernames[333], f"ожидали пустую ячейку, получили {usernames[333]!r}"
+
+    # Проверяем, что автофильтр установлен на весь диапазон (3 строки, 9 колонок → A1:I3)
+    assert ws.auto_filter.ref == "A1:I3", f"ожидали A1:I3, получили {ws.auto_filter.ref}"
 
 
 async def test_export_no_users_in_latest():
@@ -199,26 +204,106 @@ async def test_ban_user_not_found():
     assert await state.get_state() is None
 
 
-async def test_ban_non_numeric_text():
+async def test_ban_by_username():
+    """Бан по username в формате @username."""
+    cleanup_db()
+    r = add_raffle()
+    add_user(r, tg_id=601, fio="Смирнов С.С.", username="smirnov")
+
     state = fresh_state()
     await state.set_state(BanUser.waiting_for_id)
-    msg = make_msg("абвгд")
+    msg = make_msg("@smirnov")
     await process_ban_id(msg, state)
-    assert "корректный числовой" in str(msg.answer.call_args)
+
+    with Session(SYNC_ENGINE) as s:
+        u = s.execute(select(User).where(User.telegram_id == 601)).scalars().first()
+    assert u.is_banned is True
+    assert "забанен" in str(msg.answer.call_args)
+    assert await state.get_state() is None
+
+
+async def test_ban_by_username_uppercase():
+    """Бан по username с заглавными буквами (в БД ник сохранил Telegram как есть)."""
+    cleanup_db()
+    r = add_raffle()
+    add_user(r, tg_id=602, fio="Павлова П.П.", username="Pavlova")
+
+    state = fresh_state()
+    await state.set_state(BanUser.waiting_for_id)
+    msg = make_msg("@PAVLOVA")
+    await process_ban_id(msg, state)
+
+    with Session(SYNC_ENGINE) as s:
+        u = s.execute(select(User).where(User.telegram_id == 602)).scalars().first()
+    assert u.is_banned is True
+    assert "забанен" in str(msg.answer.call_args)
+
+
+async def test_unban_by_username():
+    cleanup_db()
+    r = add_raffle()
+    add_user(r, tg_id=603, fio="Фёдоров Ф.Ф.", username="fedorov", is_banned=True)
+
+    state = fresh_state()
+    await state.set_state(BanUser.waiting_for_id)
+    msg = make_msg("@fedorov")
+    await process_ban_id(msg, state)
+
+    with Session(SYNC_ENGINE) as s:
+        u = s.execute(select(User).where(User.telegram_id == 603)).scalars().first()
+    assert u.is_banned is False
+    assert "разбанен" in str(msg.answer.call_args)
+
+
+async def test_ban_username_not_found():
+    cleanup_db()
+    state = fresh_state()
+    await state.set_state(BanUser.waiting_for_id)
+    msg = make_msg("@net_takogo")
+    await process_ban_id(msg, state)
+    assert "не найден" in str(msg.answer.call_args)
+
+
+async def test_ban_username_affects_all_user_tickets():
+    """Бан по username должен закрыть заявки юзера во всех розыгрышах."""
+    cleanup_db()
+    r1 = add_raffle()
+    r2 = add_raffle()
+    add_user(r1, tg_id=604, fio="Ильин И.И.", username="ilyin")
+    add_user(r2, tg_id=604, fio="Ильин И.И.", username="ilyin")
+
+    state = fresh_state()
+    await state.set_state(BanUser.waiting_for_id)
+    await process_ban_id(make_msg("@ilyin"), state)
+
+    with Session(SYNC_ENGINE) as s:
+        tickets = s.execute(select(User).where(User.telegram_id == 604)).scalars().all()
+    assert len(tickets) == 2
+    assert all(t.is_banned for t in tickets), "забанена не каждая заявка"
+
+
+async def test_ban_no_at_sign_rejected():
+    """Ввод username без @ — ошибка, состояние не сбрасывается."""
+    cleanup_db()
+    r = add_raffle()
+    add_user(r, tg_id=605, fio="Тестов Т.Т.", username="testov")
+
+    state = fresh_state()
+    await state.set_state(BanUser.waiting_for_id)
+    msg = make_msg("testov")
+    await process_ban_id(msg, state)
+    assert "формат" in str(msg.answer.call_args)
     assert await state.get_state() == BanUser.waiting_for_id.state
 
 
 async def test_ban_sticker_does_not_crash():
     """Стикер/фото в состоянии бана: text=None не должно ронять хендлер."""
+    cleanup_db()
     state = fresh_state()
     await state.set_state(BanUser.waiting_for_id)
     msg = make_msg(None)
-    try:
-        await process_ban_id(msg, state)
-        assert "корректный числовой" in str(msg.answer.call_args)
-        return True, "OK — бот просит числовой ID"
-    except AttributeError as e:
-        return False, f"AttributeError: {e}"
+    await process_ban_id(msg, state)
+    assert msg.answer.call_args is not None, "бот проигнорировал пустое сообщение"
 
 
 async def test_ban_start_sets_state():
@@ -246,7 +331,12 @@ async def run_all():
         ("Бан: выключение", test_ban_toggle_off),
         ("Бан: все заявки юзера", test_ban_affects_all_user_tickets),
         ("Бан: юзер не найден", test_ban_user_not_found),
-        ("Бан: нечисловой ввод", test_ban_non_numeric_text),
+        ("Бан: по @username", test_ban_by_username),
+        ("Бан: по @username регистронезависимо", test_ban_by_username_uppercase),
+        ("Разбан по @username", test_unban_by_username),
+        ("Бан: @username не найден", test_ban_username_not_found),
+        ("Бан: @username во всех заявках", test_ban_username_affects_all_user_tickets),
+        ("Бан: ввод без @ отклоняется", test_ban_no_at_sign_rejected),
         ("Бан: стикер не роняет", test_ban_sticker_does_not_crash),
         ("Бан: кнопка ставит стейт", test_ban_start_sets_state),
         ("IsAdmin режет чужие коллбеки", test_isadmin_blocks_nonadmin_callbacks),
