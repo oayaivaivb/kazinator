@@ -4,3 +4,4 @@ __pycache__/
 .mypy_cache/
 .vscode/
 bot_run.log
+docker-compose.local.yml
